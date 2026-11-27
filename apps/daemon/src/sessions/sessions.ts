@@ -1,4 +1,4 @@
-import type { MainSessionDetail, MainSessionView } from '@zgent/contracts';
+import type { Contracts, MainSessionDetail, MainSessionView } from '@zgent/contracts';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -28,7 +28,10 @@ type Turn = {
   summary_of: string | null;
 };
 type Live = { token: string; client: Agent; runtime?: MainRuntime; turn?: string; output: string;
-  interrupted: boolean; models: ModelChoice[]; startup?: AbortController; done?: Promise<void>; evidenceOnly?: boolean };
+  interrupted: boolean; models: ModelChoice[]; startup?: AbortController; done?: Promise<void>; execute?: boolean };
+type TurnOptions = { resume?: string; summaryOf?: string; mode?: 'execute' | 'read' };
+
+const executionCue = /^(?:请\s*)?(?:按(?:照)?(?:这个|当前|上述|上面的|刚才的)?(?:方案|计划)[\s，,]*(?:直接|开始)?\s*(?:改|做|实现|实施|执行|落地)(?!之前|前)|(?:直接|现在|开始)\s*(?:改|做|动手|修复|实现|实施|执行|派活)|(?:修复|实现|执行|实施)(?:这个|这项|当前|上述|以下)|改掉|完成实施|交给|派给|派发|(?:implement|execute|fix|delegate)\b)/iu;
 
 export class Sessions {
   tasks: Tasks;
@@ -208,8 +211,10 @@ export class Sessions {
     }
   }
 
-  activeTurn(client: Agent) {
-    for (const current of this.live.values()) if (current.client === client && !current.interrupted && !current.evidenceOnly) return current.turn;
+  activeTurn(client: Agent, requireExecution = false) {
+    for (const current of this.live.values()) {
+      if (current.client === client && !current.interrupted && (!requireExecution || current.execute)) return current.turn;
+    }
   }
 
   delegation(client: Agent): TurnBase | undefined {
@@ -246,15 +251,34 @@ export class Sessions {
       return { task_id: task.task_id, state: task.state, result };
     });
     return this.send(sessionId, id(), '请用中文汇报以下已结束任务。用 get_task 查看真实 Diff，区分运行时观察到的验证和模型自述。' +
-      ' 说明改动、未验证项和可以用 /diff、/apply 或 /discard 查看与处理结果。\n' + clip(JSON.stringify(evidence), 12000), undefined, sourceId);
+      ' 说明改动、未验证项和可以用 /diff、/apply 或 /discard 查看与处理结果。\n' + clip(JSON.stringify(evidence), 12000), { summaryOf: sourceId });
   }
 
-  send(sessionId: string, turnId: string, input: string, resume?: string, summaryOf?: string) {
+  async explainApproval(sessionId: string, request: Contracts['PendingRequestView'], question: string) {
+    const session = this.get(sessionId);
+    if (session.project_id !== request.project_id) throw missing();
+    if (request.state !== 'pending' || Date.parse(request.expires_at) <= Date.now()) {
+      throw conflict('REVIEW_NOT_ALLOWED', 'The approval request is no longer pending.');
+    }
+    const done = this.live.get(sessionId)?.done;
+    if (this.live.get(sessionId)?.turn) {
+      await this.interrupt(sessionId);
+      await done;
+    }
+    const detail = 'operation_preview' in request ? request.operation_preview : request.kind === 'permission_grant'
+      ? request.requested_permissions : request.kind === 'user_question' ? request.questions : request.kind;
+    return this.send(sessionId, id(), '只读解释这条仍由用户决定的请求。说明它要做什么、为什么需要，以及影响范围和选择。\n' +
+      '任务 ' + request.task_id + '\n请求 ' + request.kind + '\n' + clip(typeof detail === 'string' ? detail : JSON.stringify(detail), 8000) +
+      '\n用户追问：' + question, { mode: 'read' });
+  }
+
+  send(sessionId: string, turnId: string, input: string, { resume, summaryOf, mode }: TurnOptions = {}) {
     if (this.closing) throw conflict('REVIEW_NOT_ALLOWED', 'The daemon is stopping.');
     const session = this.get(sessionId);
+    const inputHash = hash(mode ? JSON.stringify({ input, mode }) : input);
     const existing = this.store.one<Turn>('SELECT * FROM main_turns WHERE turn_id=?', turnId);
     if (existing) {
-      if (existing.session_id !== sessionId || existing.input_sha256 !== hash(input) || existing.resume_task_id !== (resume ?? null)) {
+      if (existing.session_id !== sessionId || existing.input_sha256 !== inputHash || existing.resume_task_id !== (resume ?? null)) {
         throw conflict('IDEMPOTENCY_CONFLICT', 'This turn ID already has a different request.');
       }
       return this.detail(sessionId);
@@ -272,7 +296,7 @@ export class Sessions {
     const text = redact(input);
     this.store.tx(() => {
       this.store.run("INSERT INTO main_turns(turn_id,session_id,input_sha256,input,state,created_at_ms,base_mode,resume_task_id,summary_of) VALUES (?,?,?,?,'running',?,?,?,?)",
-        turnId, sessionId, hash(input), text, now, session.base_mode, resume ?? null, summaryOf ?? null);
+        turnId, sessionId, inputHash, text, now, session.base_mode, resume ?? null, summaryOf ?? null);
       this.store.run("UPDATE main_sessions SET state='running',updated_at_ms=? WHERE session_id=?", now, sessionId);
       this.store.run("INSERT OR REPLACE INTO client_project_grants VALUES (?,?,1,'own','own',1,?)", session.client_id, session.project_id, now);
       this.store.run('DELETE FROM client_profile_grants WHERE client_id=?', session.client_id);
@@ -282,7 +306,7 @@ export class Sessions {
     current.turn = turnId;
     current.output = '';
     current.interrupted = false;
-    current.evidenceOnly = Boolean(summaryOf);
+    current.execute = !summaryOf && (mode ? mode === 'execute' : Boolean(resume) || executionCue.test(input.trimStart()));
     current.startup = new AbortController();
     this.live.set(sessionId, current);
     current.done = this.perform(session, turnId, text, current);
@@ -311,7 +335,7 @@ export class Sessions {
       const prompt = 'Coordinate with the zgent MCP tools. Use inspect_project to read code before planning when available. Only delegate implementation when the owner explicitly requests execution. Use the default worker unless the owner names another one. Use actual task diff and verification evidence for the Chinese summary. Human approvals belong to the owner.\n' +
         prior + (references ? '\nPrevious conversation task IDs (for the human to reference): ' + references : '') +
         '\nRegistered project: ' + session.project_id + '\nDefault worker profile: ' + (session.default_worker ?? this.defaultWorker(profile)) +
-        '\nWorker base mode: ' + session.base_mode + '\n\nUser message:\n' + text;
+        '\nWorker base mode: ' + session.base_mode + '\nTurn access: ' + (live.execute ? 'task execution' : 'read-only discussion') + '\n\nUser message:\n' + text;
       const result = await live.runtime.prompt(prompt, profile.model, {
         runtime: version => this.store.run('UPDATE main_sessions SET runtime_version=? WHERE session_id=?', clip(version, 128), session.session_id),
         session: native => this.store.run('UPDATE main_sessions SET native_session_id=? WHERE session_id=?', native, session.session_id),

@@ -81,6 +81,7 @@
     "/api/v1/sessions/{session_id}/profile",
     "/api/v1/sessions/{session_id}/models",
     "/api/v1/sessions/{session_id}/preferences",
+    "/api/v1/sessions/{session_id}/explain-approval",
     "/api/v1/sessions/{session_id}/summary",
     "/api/v1/sessions/{session_id}/interrupt",
     "/api/v1/sessions/{session_id}/cancel-group",

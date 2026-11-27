@@ -8,7 +8,7 @@ const options = () => [
 ];
 const send = value => console.log(JSON.stringify({ jsonrpc: '2.0', ...value }));
 const reply = (id, result) => send({ id, result });
-let next = 0, negotiated = false;
+let next = 0, negotiated = false, heldPrompt;
 const pending = new Map();
 function clientRequest(method, params) {
   const id = 'fixture-req-' + (++next);
@@ -22,6 +22,20 @@ async function mcpRequest(method, params) {
   body: JSON.stringify({ jsonrpc: '2.0', id: ++next, method, params }) });
   const body = await response.text();
   return JSON.parse(body.startsWith('{') ? body : body.split('\n').find(line => line.startsWith('data: ')).slice(6)).result;
+}
+
+async function requireReadOnly(taskId) {
+  const read = await mcpRequest('tools/call', { name: 'inspect_project', arguments: { action: 'read', path: 'source.txt' } });
+  if (read?.isError || !read?.content?.[0]?.text?.includes('working copy')) throw new Error('read-only turn lost project access');
+  const mutations = {
+    delegate_task: { project_id: 'fixture', profile_id: 'implement', brief: { goal: 'Should not run', acceptance_criteria: ['fixture'] } },
+    send_to_task: { task_id: taskId, message: 'Should not be queued' },
+    cancel_task: { task_id: taskId },
+  };
+  for (const [name, args] of Object.entries(mutations)) {
+    const result = await mcpRequest('tools/call', { name, arguments: { ...args, request_id: 'read-only-' + next } });
+    if (result?.structuredContent?.error?.code !== 'UNAVAILABLE') throw new Error('Missing read-only guard for ' + name);
+  }
 }
 
 const lines = createInterface({ input: process.stdin });
@@ -44,13 +58,19 @@ lines.on('line', async line => {
       if (params.configId === 'model') model = params.value;
       return reply(id, { configOptions: options() });
     }
-    if (method === 'session/cancel' || method === '$/cancel_request') return;
+    if (method === 'session/cancel') {
+      if (heldPrompt) reply(heldPrompt, { stopReason: 'cancelled' });
+      heldPrompt = undefined;
+      return;
+    }
+    if (method === '$/cancel_request') return;
     if (method === 'session/prompt') {
       if (!negotiated) {
         await mcpRequest('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: {name: 'fixture-acp',version:'1'} });
         negotiated = true;
       }
-      if (params.prompt[0].text.includes('delegate fixture')) {
+      const prompt = params.prompt[0].text;
+      if (prompt.includes('delegate fixture')) {
         const permOptions = [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }];
         const okPerm = await clientRequest('session/request_permission', { sessionId: native,
           toolCall: { toolCallId: 'tc-1', name: 'mcp_zgent_delegate_task', status: 'pending' }, options: permOptions });
@@ -64,10 +84,24 @@ lines.on('line', async line => {
         } });
         if (!delegated?.structuredContent?.ok) throw new Error('delegation failed');
       }
-      if (params.prompt[0].text.includes('snapshot fixture')) {
+      if (prompt.includes('approval fixture')) {
+        const delegated = await mcpRequest('tools/call', { name: 'delegate_task', arguments: {
+          project_id: 'fixture', profile_id: 'implement', request_id: 'fixture-approval-' + next,
+          brief: { goal: 'fixture approval', acceptance_criteria: ['fixture'] },
+        } });
+        if (!delegated?.structuredContent?.ok) throw new Error('approval delegation failed');
+        heldPrompt = id;
+        return;
+      }
+      if (prompt.includes('read-only fixture')) await requireReadOnly('fixture-task');
+      if (prompt.includes('用户追问：')) {
+        if (!prompt.includes('printf fixture-approved') || !prompt.includes('为什么需要？')) throw new Error('missing approval details');
+        await requireReadOnly(/任务 (\S+)/.exec(prompt)?.[1]);
+      }
+      if (prompt.includes('snapshot fixture')) {
         const listing = await mcpRequest('tools/call', { name: 'inspect_project', arguments: { action: 'list' } });
         if (!listing?.content?.[0]?.text?.includes('fresh.txt') || listing.content[0].text.includes('ignored.txt')) throw new Error('project scope');
-        const selected = /Default worker profile: (\S+)/.exec(params.prompt[0].text)?.[1];
+        const selected = /Default worker profile: (\S+)/.exec(prompt)?.[1];
         for (const part of ['first', 'second']) {
           const delegated = await mcpRequest('tools/call', { name: 'delegate_task', arguments: {
             project_id: 'fixture', profile_id: selected, request_id: 'snapshot-' + part,

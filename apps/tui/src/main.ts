@@ -16,7 +16,7 @@ type Workspace = { changed_paths: number | null; workspace: { state: string; man
 type Worker = Contracts['ProfileList']['profiles'][number];
 
 const commands = ['/project','/sessions','/session','/new','/model','/worker','/base','/refresh','/tasks','/worktrees',
-  '/diff','/apply','/discard','/resolve-apply','/resume','/cancel','/stop','/web','/help','/quit'];
+  '/diff','/apply','/discard','/resolve-apply','/run','/read','/resume','/why','/cancel','/stop','/web','/help','/quit'];
 const terminal = new Set(['succeeded','failed','cancelled','interrupted']);
 const clean = (input: string) => input.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 const fullPath = (path: string) => resolve(path === '~' || path.startsWith('~/') ? join(homedir(), path.slice(1)) : path);
@@ -245,11 +245,11 @@ class Tui {
       if (request.kind === 'user_question') {
         this.print(request.questions.map(question => question.prompt + (question.choices?.length ? '\n' +
           question.choices.map((choice, index) => `${index + 1}. ${choice.label}`).join('\n') : '')).join('\n'));
-        this.print('输入答案。多个问题按顺序用 | 分隔。');
+        this.print('输入答案。多个问题按顺序用 | 分隔。用 /why 先问主控。');
       } else {
         this.print(request.kind === 'permission_grant' ? JSON.stringify(request.requested_permissions, null, 2) :
           'operation_preview' in request ? request.operation_preview : request.kind);
-        this.print((request.allowed_choices.includes('accept_once') ? '[y 允许一次] ' : '') + '[n 拒绝] [c 取消任务]');
+        this.print((request.allowed_choices.includes('accept_once') ? '[y 允许一次] ' : '') + '[n 拒绝] [c 取消任务] [/why 解释]');
       }
     } catch { /* The worker may have already resolved the request. */ }
     finally { this.readingApproval = false; }
@@ -314,10 +314,15 @@ class Tui {
     }
   }
 
-  async send(input: string, resume?: string) {
+  async send(input: string, options: { resume_task_id?: string; mode?: 'execute' | 'read' } = {}) {
     if (!this.chat) await this.newSession();
     if (!this.chat) return;
-    await this.local.api(this.sessionPath + '/turn', { turn_id: randomUUID(), input, ...(resume ? { resume_task_id: resume } : {}) });
+    await this.local.api(this.sessionPath + '/turn', { turn_id: randomUUID(), input, ...options });
+  }
+
+  async explainApproval(question: string) {
+    if (!this.approval) throw new Error('当前没有待处理的审批。');
+    await this.local.api(this.sessionPath + '/explain-approval', { request_id: this.approval.pending_request_id, question });
   }
 
   async line(line: string) {
@@ -327,7 +332,10 @@ class Tui {
         if (line === 'y') { await this.local.api('/api/v1/tasks/' + task + '/discard', { confirm_removal: true }); this.print('候选工作区已清理。'); }
         return;
       }
-      if (this.approval) return this.answer(this.approval, line);
+      if (this.approval) {
+        if (this.approval.kind === 'user_question' || ['y','n','c'].includes(line)) return this.answer(this.approval, line);
+        return this.explainApproval(line);
+      }
       if (this.recent && /^\d+$/.test(line)) {
         const project = this.recent[Number(line) - 1];
         if (project) return this.open(project.root);
@@ -346,6 +354,11 @@ class Tui {
     if (!this.project) throw new Error('先用 /project 打开项目。');
     const projectQuery = qp('project_id', this.project.id);
     switch (command) {
+      case '/why': return this.explainApproval(arg || '请解释这条请求。');
+      case '/run':
+      case '/read':
+        if (!arg) throw new Error('请输入本轮的任务或问题。');
+        return this.send(arg, { mode: command === '/run' ? 'execute' : 'read' });
       case '/new': await this.newSession(arg || undefined); this.status(); return;
       case '/sessions':
         this.sessions = await this.local.api<MainSessionView[]>('/api/v1/sessions' + projectQuery);
@@ -412,7 +425,7 @@ class Tui {
       case '/resume': {
         const [id, ...words] = rest;
         if (!id || !words.join(' ').trim()) throw new Error('用 /resume <任务 ID> <续做说明>。');
-        return this.send('请继续任务 ' + id + ' 并派活实现。\n' + words.join(' '), id);
+        return this.send('请继续任务 ' + id + ' 并派活实现。\n' + words.join(' '), { resume_task_id: id });
       }
       case '/cancel': {
         const id = this.taskId(arg);

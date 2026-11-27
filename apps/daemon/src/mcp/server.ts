@@ -14,12 +14,15 @@ export const mcpBodyLimit = 256 * 1024;
 function run(tasks: Tasks, sessions: Sessions, tool: ToolName, client: Agent, args: unknown, signal: AbortSignal) {
   const main = client.startsWith('main:');
   const modifying = tool === 'delegate_task' || tool === 'send_to_task' || tool === 'cancel_task';
-  const active = main && modifying ? sessions.activeTurn(client) : undefined;
-  if (main && modifying && !active) throw new Failure(409, 'NOT_READY', 'The coordinator is not in an active turn.', 'UNAVAILABLE');
+  const active = main && modifying ? sessions.activeTurn(client, true) : undefined;
+  if (main && modifying && !active) {
+    throw new Failure(409, 'NOT_READY', 'This turn is read-only. The owner must explicitly request execution.', 'UNAVAILABLE');
+  }
   switch (tool) {
     case 'delegate_task': {
       const input = args as Input<'delegate_task'>;
       const turn = active ? sessions.delegation(client) : undefined;
+      if (main && !turn) throw new Failure(409, 'NOT_READY', 'The coordinator has no active project.', 'UNAVAILABLE');
       return tasks.delegate(client, turn ? { ...input, conversation_tag: turn.id } : input, turn ? { turn } : undefined);
     }
     case 'get_task': return tasks.get(client, args as Input<'get_task'>);

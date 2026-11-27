@@ -402,6 +402,10 @@ test('MCP and Apps, snapshots, main sessions, event replay and safe restart over
       reader.releaseLock();
     }
 
+    const owner = async (path: string, body?: unknown) => {
+      const response = await ownerRequest(ownerSocket(daemon), path, body);
+      return { status: response.statusCode, body: await jsonResponse<any>(response) };
+    };
     const created = await api('/api/v1/sessions', { project_id: 'fixture', profile_id: 'google', title: 'Fixture session' });
     assert.equal(created.response.status, 201);
     const session = created.body;
@@ -429,15 +433,43 @@ test('MCP and Apps, snapshots, main sessions, event replay and safe restart over
       return detail.turns[1]?.state === 'completed' ? detail : undefined;
     }, 'same-provider model change');
     assert.match(switched.turns[1].output, /ACP response \(fixture-google\)/);
+    const readOnly = { turn_id: 'read-only-turn', input: '先看看，read-only fixture' };
+    assert.equal((await owner(sessionPath + '/turn', readOnly)).status, 202);
+    const discussed = await until(async () => {
+      const detail = (await owner(sessionPath)).body;
+      return detail.turns[2]?.state !== 'running' ? detail : undefined;
+    }, 'read-only discussion');
+    assert.equal(discussed.turns[2].state, 'completed', discussed.turns[2].error);
+    assert.equal(discussed.tasks.length, 1);
+    assert.equal((await owner(sessionPath + '/turn', { ...readOnly, mode: 'execute' })).status, 409);
+
+    const approvalTurn = { turn_id: 'approval-turn', input: '按这个方案改，approval fixture' };
+    assert.equal((await owner(sessionPath + '/turn', approvalTurn)).status, 202);
+    const awaiting = await until(async () => {
+      const detail = (await owner(sessionPath)).body;
+      return detail.tasks.find((entry: any) => entry.turn_id === approvalTurn.turn_id && entry.snapshot.state === 'waiting_input')?.snapshot;
+    }, 'approval while the main agent is responding');
+    const requestPath = '/api/v1/requests/' + awaiting.pending_requests[0].pending_request_id;
+    const initialRequest = (await owner(requestPath)).body;
+    const followUp = await owner(sessionPath + '/explain-approval', { request_id: initialRequest.pending_request_id, question: '为什么需要？' });
+    assert.equal(followUp.status, 202, followUp.body.detail);
+    const explained = await until(async () => {
+      const detail = (await owner(sessionPath)).body;
+      return detail.turns[4]?.state !== 'running' ? detail : undefined;
+    }, 'approval explanation');
+    assert.equal(explained.turns[3].state, 'cancelled');
+    assert.equal(explained.turns[4].state, 'completed', explained.turns[4].error);
+    assert.equal(explained.tasks.length, 2);
+    assert.equal((await owner(requestPath)).body.state, 'pending');
+    assert.equal((await owner(requestPath)).body.revision, initialRequest.revision);
+    assert.equal((await owner(requestPath + '/decision', { kind: 'operation_approval', decision: 'accept_once', decision_id: 'approval-after-explanation',
+      expected_revision: initialRequest.revision, operation_hash: initialRequest.operation_hash })).status, 202);
+    await inState(awaiting.task_id, 'succeeded');
     const newMain = await api(sessionPath + '/profile', { profile_id: 'claude-main' });
     assert.equal(newMain.body.previous_session_id, session.session_id);
     assert.notEqual(newMain.body.session_id, session.session_id);
     assert.equal((await api(sessionPath + '/close', {})).body.state, 'closed');
 
-    const owner = async (path: string, body?: unknown) => {
-      const response = await ownerRequest(ownerSocket(daemon), path, body);
-      return { status: response.statusCode, body: await jsonResponse<any>(response) };
-    };
     const sameName = [];
     for (const parent of ['work', 'play']) {
       const path = join(root, parent, 'same-name');
@@ -469,7 +501,7 @@ test('MCP and Apps, snapshots, main sessions, event replay and safe restart over
     const personalPath = '/api/v1/sessions/' + personal.body.session_id;
     assert.equal(personal.body.base_mode, 'snapshot');
     assert.equal((await owner(personalPath + '/preferences', { worker: 'astra' })).body.default_worker, 'astra');
-    assert.equal((await owner(personalPath + '/turn', { turn_id: 'snapshot-turn', input: 'snapshot fixture' })).status, 202);
+    assert.equal((await owner(personalPath + '/turn', { turn_id: 'snapshot-turn', input: 'snapshot fixture', mode: 'execute' })).status, 202);
     const personalReply = await until(async () => {
       const detail = (await owner(personalPath)).body;
       return detail.turns[0]?.state !== 'running' ? detail : undefined;

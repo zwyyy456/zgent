@@ -19,12 +19,14 @@ const submission = z.strictObject({ request: z.unknown(), include_tracked_change
 const delegateSchema = standardSchema(tools.find(tool => tool.name === 'delegate_task')!.inputSchema);
 const checkoutPath = z.string().min(1).max(4096);
 const newSession = z.strictObject({ project_id: z.string(), profile_id: z.string(), title: z.string().trim().min(1).max(160), checkout: checkoutPath.optional() });
-const newTurn = z.strictObject({ turn_id: z.string(), input: z.string().min(1).max(12000), resume_task_id: z.string().optional() });
+const newTurn = z.strictObject({ turn_id: z.string(), input: z.string().min(1).max(12000), resume_task_id: z.string().optional(),
+  mode: z.enum(['execute','read']).optional() });
 const newProfile = z.strictObject({ profile_id: z.string(), model: z.string().min(1).max(256).optional() });
 const group = z.strictObject({ turn_id: z.string() });
 const recovery = z.strictObject({ expected_version: z.number().int().nonnegative(), confirm_stopped: z.literal(true) });
 const workspaceRemoval = z.strictObject({ confirm_removal: z.literal(true) });
 const preferences = z.strictObject({ worker: z.string().optional(), base: z.enum(['head','snapshot']).optional() });
+const approvalQuestion = z.strictObject({ request_id: z.string(), question: z.string().trim().min(1).max(3000) });
 
 function json(res: ServerResponse, status: number, body: unknown, problem = false) {
   res.writeHead(status, { 'content-type': problem ? 'application/problem+json' : 'application/json; charset=utf-8' });
@@ -210,7 +212,13 @@ export function http(tasks: Tasks, scheduler: Scheduler, shutdown: () => void) {
         const input = newTurn.safeParse(await readJson(req));
         if (!input.success) throw invalid('Invalid main session turn.');
         return json(res, 202, sessions.send(sessionId, target(input.data.turn_id), input.data.input,
-          input.data.resume_task_id ? target(input.data.resume_task_id) : undefined));
+          { resume: input.data.resume_task_id ? target(input.data.resume_task_id) : undefined, mode: input.data.mode }));
+      }
+      if (action === 'explain-approval') {
+        const input = approvalQuestion.safeParse(await readJson(req));
+        if (!input.success) throw invalid('Choose a pending approval and enter your question.');
+        const request = scheduler.interactions.get(human, target(input.data.request_id));
+        return json(res, 202, await sessions.explainApproval(sessionId, request, input.data.question));
       }
       if (action === 'profile') {
         const input = newProfile.safeParse(await readJson(req));

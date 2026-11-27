@@ -22,6 +22,7 @@ pnpm build
 
 - 内置 `sol`、`astra` 和只读 `review`。`/worker` 查看档案，`/worker astra` 切换当前主会话的默认 worker，`/refresh` 重新读取模型目录。每项任务固定所选档案、模型和基线。[OpenAI Codex 模型可用性说明](https://help.openai.com/en/articles/20001275-chatgpt-work-and-codex)
 - 新建 AGY 会话时会在首条消息前列出 ACP 报告的模型，`/model` 可以切换。主控通过只读项目和调度工具工作。`/project` 打开或切换项目，`/sessions` 列会话，`/session <编号>` 继续已有对话。[Antigravity ACP](https://antigravity.google/docs/ide/extensions/acp/)
+- 说「先看看」可只读讨论，说「按这个方案改」可直接派活。`/read <问题>` 和 `/run <任务>` 可明确指定当轮权限。审批挂起时用 `/why <问题>` 在同一主会话追问，仍可用 `y`、`n`、`c` 处理原请求。若主控正在回答，追问会先结束该次回答，worker 保持等待。
 - Claude 的 Opus、Fable 等按账号和运行时目录配置。选择计划、API 或云计费来源由本地档案决定。控制台将已观测用量和计费来源分开显示。[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/typescript)
 - 停止主会话的回答与取消该轮派发的任务组是两项独立操作。选定的主控只用获准的项目和 worker 档案。
 
