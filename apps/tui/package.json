@@ -1,0 +1,7 @@
+{
+  "name": "@zgent/tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@zgent/contracts": "workspace:*" }
+}

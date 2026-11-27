@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+import('../apps/tui/src/main.ts').catch(error => {
+  console.error(error instanceof Error ? error.message : 'Zgent could not start.');
+  process.exitCode = 1;
+});

@@ -1,0 +1,4406 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Personal Agent Orchestrator — Local Control API",
+    "version": "1.1.0-design",
+    "summary": "设计契约；不包含应用实现或已验证的运行时互通承诺。",
+    "description": "冻结于2026-11-26。此OpenAPI只定义Daemon的同源控制台HTTP/SSE接口；/mcp由官方MCP SDK独立承载，不能把这里的SSE游标当作MCP协议恢复机制。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "description": "仅loopback；示例端口，实际端口由Daemon配置并由所有者登记。",
+      "variables": {
+        "port": {
+          "default": "43127",
+          "description": "实际监听端口。"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Tasks"
+    },
+    {
+      "name": "Events"
+    },
+    {
+      "name": "Requests"
+    },
+    {
+      "name": "Human decisions"
+    },
+    {
+      "name": "Artifacts"
+    },
+    {
+      "name": "Profiles"
+    }
+  ],
+  "security": [
+    {
+      "ClientBearer": []
+    },
+    {
+      "ConsoleSession": []
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getLiveness",
+        "summary": "最小公开存活检查",
+        "description": "只返回HTTP进程存活信息，不表示数据库、worker或恢复已经就绪。",
+        "tags": [
+          "Health"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "进程可响应。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/readiness": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "所有者可见的准备状态",
+        "description": "仅人类控制台会话可读取。不会启动运行时、执行任务或探测模型额度。",
+        "tags": [
+          "Health"
+        ],
+        "security": [
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "准备状态快照。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "operationId": "listProjectTasks",
+        "summary": "按已授权项目列出任务",
+        "description": "项目必须已由所有者登记且凭据获授权；cursor是不透明、有时限、绑定principal/project/filter的分页游标。同一分页链固定任务快照与snapshot_event_cursor；首屏取得水位后即可订阅事件，在全部快照页加载完成后按cursor应用缓冲事件。禁止逐页提高水位而跳过加载过程中的变化。",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "ClientBearer": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务摘要分页。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "分页快照已过期；重新读取第一页。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DomainState"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "operationId": "getTask",
+        "summary": "读取任务详情",
+        "description": "对task_id关联的项目与所有者进行服务端授权检查；不接受调用方传入owner_id作为权限证据。",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "ClientBearer": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务详情快照。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "operationId": "streamProjectEvents",
+        "summary": "订阅应用自有事件流",
+        "description": "这是Daemon控制API的SSE，不是MCP传输或MCP Last-Event-ID恢复。data完全使用公共events.schema.json。按project_id授权过滤；after为十进制字符串，返回cursor大于after的保留事件后继续直播。客户端按event_id去重，以最后处理的cursor重新连接。0从当前保留窗口起点开始。过期游标返回410，先获取任务快照再按snapshot_event_cursor重连。连接关闭仅结束观察，不取消任务。",
+        "tags": [
+          "Events"
+        ],
+        "security": [
+          {
+            "ClientBearer": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE：event 为 orchestrator_event，data 是单行JSON EventEnvelope。可发送注释heartbeat；不依赖SSE id/Last-Event-ID。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Accel-Buffering": {
+                "schema": {
+                  "type": "string",
+                  "const": "no"
+                }
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-event-schema": {
+                  "$ref": "#/components/schemas/EventEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "游标已落在保留窗口外；响应包含当前授权项目可用水位。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SequenceCursor",
+              "default": "0"
+            }
+          }
+        ],
+        "x-implementation-stage": "deferred-after-macos-mvp"
+      }
+    },
+    "/api/v1/requests/{request_id}": {
+      "get": {
+        "operationId": "getPendingRequest",
+        "summary": "读取待处理请求及决策投递状态",
+        "description": "返回不可变的操作/问题快照与当前状态。模型侧读取可以获知请求内容，但不能据此获得批准权限。所有返回内容遵循项目授权和输出脱敏规则。",
+        "tags": [
+          "Requests"
+        ],
+        "security": [
+          {
+            "ClientBearer": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前请求快照。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingRequestView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/requests/{request_id}/decision": {
+      "post": {
+        "operationId": "recordHumanDecision",
+        "summary": "记录一次人类决定",
+        "description": "只接受经过独立验证的人类控制台Session+CSRF+精确Origin。ClientBearer、MCP会话、模型文字、MCP App可见性标记均不能授权本端点。事务中验证request仍pending、attempt仍匹配、未过期、expected_revision及operation_hash一致、决定类型匹配、权限为可证明子集。幂等键为(认证client_id,operation=resolve_pending_request,request_id=decision_id)，path中的pending_request_id纳入canonical payload hash；同键不同resource或body返回409，相同请求重放返回不可变的原HTTP收据。最新投递投影从GET请求详情读取。记录后异步投递，响应不表示操作执行成功。问题答案不是权限批准。",
+        "tags": [
+          "Human decisions"
+        ],
+        "security": [
+          {
+            "ConsoleSession": [],
+            "CsrfToken": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "决定已经持久化；可能尚未投递。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReceipt"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "相同幂等请求重放，返回不可变的原HTTP收据；当前投递状态另从GET请求详情读取。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "过期、已解决、stale attempt、版本/哈希不符或幂等键冲突。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "决定类型不匹配、原生权限子集无法验证或问题答案不合法。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "format": "uri"
+            },
+            "description": "必须精确等于Daemon本次启动公布的控制台origin（含scheme、host、port）；禁止null、通配符和仅按域后缀匹配。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/cancel": {
+      "post": {
+        "operationId": "requestHumanCancellation",
+        "summary": "由控制台请求取消任务",
+        "description": "只记录取消意图并让适配器发送对应中断。幂等键为(认证client_id,operation=cancel_task,request_id=command_id)，task_id纳入canonical payload hash。取消请求被接受并不等于进程已经结束；状态可停留在cancelling/recovering。已终态任务不回滚。通过本路由可取消任务，MCP端自己的cancel_task仍按其较窄项目/任务权限执行，二者共享同一个领域命令处理器。",
+        "tags": [
+          "Human decisions"
+        ],
+        "security": [
+          {
+            "ConsoleSession": [],
+            "CsrfToken": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "取消意图已持久化，等待运行时确认。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationReceipt"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "幂等重放或任务已处于终态。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "版本不符或同command_id绑定不同请求。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "format": "uri"
+            },
+            "description": "必须精确等于Daemon本次启动公布的控制台origin（含scheme、host、port）；禁止null、通配符和仅按域后缀匹配。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTaskCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/review": {
+      "post": {
+        "operationId": "recordTaskReview",
+        "summary": "人工标记终态任务审查结果",
+        "description": "仅ConsoleSession+CSRF+精确Origin。事务中验证任务已处于succeeded/failed/cancelled/interrupted终态及expected_version匹配，设置review_state为accepted/rejected并递增version。幂等键为(认证client_id,operation=review_task,request_id)，task_id纳入canonical payload hash；相同键和body返回不可变原收据，同键不同resource或body冲突。审查标记不等于合并、push、部署、删除worktree或证明任务执行成功。",
+        "tags": [
+          "Human decisions"
+        ],
+        "security": [
+          {
+            "ConsoleSession": [],
+            "CsrfToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "审查结果已持久化，或同一幂等请求的原收据。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskReviewReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "任务版本不符或同request_id绑定不同请求。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "任务尚未终止，不能进行最终人工审查标记。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "format": "uri"
+            },
+            "description": "必须精确等于Daemon本次启动公布的控制台origin（含scheme、host、port）；禁止null、通配符和仅按域后缀匹配。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskReviewCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "readArtifactSlice",
+        "summary": "读取已授权artifact的元数据和字节片段",
+        "description": "artifact_id只能解析到服务端登记的不可变artifact。输入不接受路径/URL；路径规范化、符号链接限制、文件拥有关系和项目授权由服务端验证。用offset_bytes和max_bytes分块读取，base64解码后拼接。不得因文件名或副扩展名而执行内容。",
+        "tags": [
+          "Artifacts"
+        ],
+        "security": [
+          {
+            "ClientBearer": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "不可变artifact的有界字节片段。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactSlice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "记录仍存在但artifact已按保留策略移除。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "offset_bytes超过文件大小。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          },
+          {
+            "name": "offset_bytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "default": 0
+            }
+          },
+          {
+            "name": "max_bytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144,
+              "default": 65536
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles": {
+      "get": {
+        "operationId": "listProjectProfiles",
+        "summary": "读取项目可用的运行档案",
+        "description": "只读已登记配置及最近的能力发现结果；不在此端点注册运行档案、设置密钥、修改授权、启动登录或调用私有额度接口。模型具体可用性以运行时能力发现和官方账号权限为准。",
+        "tags": [
+          "Profiles"
+        ],
+        "security": [
+          {
+            "ClientBearer": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "该项目已获准的运行档案。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数或请求格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "无有效认证；不得把本接口当作厂商OAuth代理。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "凭据作用域不符，或Origin/CSRF校验失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或该principal无权获知此资源。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "超过本地服务速率/连接限制。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "description": "建议等待秒数。"
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon尚未准备好或恢复尚未完成。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ClientBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Daemon为已登记客户端发放的本地受限凭据。不是Google/OpenAI/Anthropic token。服务端验证凭据后导出principal及project/profile scopes；无人工批准能力。"
+      },
+      "ConsoleSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "orchestrator_session",
+        "description": "已验证所有者的独立控制台会话；host-only、HttpOnly、SameSite=Strict，不放入MCP结果、模型上下文或MCP App资源。TLS部署另设置Secure。"
+      },
+      "CsrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "与当前控制台会话绑定的CSRF证明；服务端校验，缺失/不符拒绝。不能由MCP客户端凭据换取。"
+      }
+    },
+    "schemas": {
+      "OpaqueId": {
+        "$ref": "#/components/schemas/DomainId"
+      },
+      "IdempotencyId": {
+        "$ref": "#/components/schemas/DomainRequestId"
+      },
+      "Revision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991,
+        "description": "资源的单调递增 CAS 版本；限制在 JavaScript 安全整数范围内。"
+      },
+      "SequenceCursor": {
+        "$ref": "#/components/schemas/DomainEventCursor"
+      },
+      "OperationHash": {
+        "type": "string",
+        "minLength": 71,
+        "maxLength": 71,
+        "pattern": "^sha256:[a-f0-9]{64}$",
+        "description": "服务端对请求的不可变规范化操作快照计算的哈希；客户端只能回显，不能用自报哈希定义操作。"
+      },
+      "Timestamp": {
+        "$ref": "#/components/schemas/DomainTimestamp"
+      },
+      "TaskStatus": {
+        "$ref": "#/components/schemas/DomainState"
+      },
+      "RuntimeKind": {
+        "$ref": "#/components/schemas/DomainAdapter"
+      },
+      "JsonValue": {
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            }
+          }
+        ]
+      },
+      "TaskSummary": {
+        "$ref": "#/components/schemas/DomainTaskSnapshot"
+      },
+      "TaskView": {
+        "$ref": "#/components/schemas/DomainTaskSnapshot"
+      },
+      "TaskList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainTaskSnapshot"
+            },
+            "minItems": 0,
+            "maxItems": 100
+          },
+          "next_cursor": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot_event_cursor": {
+            "$ref": "#/components/schemas/DomainEventCursor"
+          }
+        },
+        "required": [
+          "project_id",
+          "tasks",
+          "next_cursor",
+          "snapshot_event_cursor"
+        ]
+      },
+      "ProfileSummary": {
+        "$ref": "#/components/schemas/DomainProfile"
+      },
+      "ProfileList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainProfile"
+            },
+            "minItems": 0,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "project_id",
+          "profiles"
+        ]
+      },
+      "Choice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "choice_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "description": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "choice_id",
+          "label",
+          "description"
+        ]
+      },
+      "QuestionDefinition": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "answer_kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "single_choice",
+              "multiple_choice",
+              "boolean"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "minItems": 0,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "question_id",
+          "title",
+          "prompt",
+          "answer_kind",
+          "required",
+          "choices"
+        ],
+        "description": "答案须由服务端根据这份不可变问题快照进行语义校验；text/boolean 的 choices 必须为空。",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "answer_kind": {
+                  "enum": [
+                    "single_choice",
+                    "multiple_choice"
+                  ]
+                }
+              },
+              "required": [
+                "answer_kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "choices": {
+                  "minItems": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "choices": {
+                  "maxItems": 0
+                }
+              }
+            }
+          }
+        ]
+      },
+      "TextAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "text"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 16000
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ]
+      },
+      "SingleChoiceAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "single_choice"
+          },
+          "choice_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "kind",
+          "choice_id"
+        ]
+      },
+      "MultipleChoiceAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "multiple_choice"
+          },
+          "choice_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "kind",
+          "choice_ids"
+        ]
+      },
+      "BooleanAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "boolean"
+          },
+          "value": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ]
+      },
+      "AnswerValue": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextAnswer"
+          },
+          {
+            "$ref": "#/components/schemas/SingleChoiceAnswer"
+          },
+          {
+            "$ref": "#/components/schemas/MultipleChoiceAnswer"
+          },
+          {
+            "$ref": "#/components/schemas/BooleanAnswer"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind"
+        }
+      },
+      "Answers": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 32,
+        "propertyNames": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "additionalProperties": {
+          "$ref": "#/components/schemas/AnswerValue"
+        },
+        "description": "按原请求 question_id 映射答案；未知问题ID、类型不符、未知选项、缺少必填答案均拒绝。"
+      },
+      "PermissionObject": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 64,
+        "additionalProperties": {
+          "$ref": "#/components/schemas/JsonValue"
+        },
+        "description": "保留运行时原生权限对象形状。JSON Schema 只检查JSON边界；对应 runtime adapter 必须用其固定版本的原生schema验证并证明授予集合是请求集合和用户策略的子集，无法证明则拒绝。"
+      },
+      "PermissionsApprovalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decision_recorded",
+              "provider_resolved",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeKind"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "provider_request_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GET时按当前状态构造的决定投递投影；不是修改已保存的幂等HTTP原始收据。"
+          },
+          "pending_request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "not_sent",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "const": "permission_grant"
+          },
+          "requested_permissions": {
+            "$ref": "#/components/schemas/PermissionObject"
+          },
+          "allowed_choices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "accept_once",
+                "deny",
+                "cancel_task"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "attempt_id",
+          "revision",
+          "operation_hash",
+          "state",
+          "created_at",
+          "expires_at",
+          "runtime",
+          "summary",
+          "provider_request_id",
+          "decision",
+          "pending_request_id",
+          "delivery_state",
+          "kind",
+          "requested_permissions",
+          "allowed_choices"
+        ]
+      },
+      "QuestionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decision_recorded",
+              "provider_resolved",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeKind"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "provider_request_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GET时按当前状态构造的决定投递投影；不是修改已保存的幂等HTTP原始收据。"
+          },
+          "pending_request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "not_sent",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "const": "user_question"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionDefinition"
+            },
+            "minItems": 1,
+            "maxItems": 32
+          },
+          "allowed_choices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "answer",
+                "cancel_task"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 2,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "attempt_id",
+          "revision",
+          "operation_hash",
+          "state",
+          "created_at",
+          "expires_at",
+          "runtime",
+          "summary",
+          "provider_request_id",
+          "decision",
+          "pending_request_id",
+          "delivery_state",
+          "kind",
+          "questions",
+          "allowed_choices"
+        ]
+      },
+      "PendingRequestView": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CommandApprovalRequest"
+          },
+          {
+            "$ref": "#/components/schemas/FileApprovalRequest"
+          },
+          {
+            "$ref": "#/components/schemas/PermissionsApprovalRequest"
+          },
+          {
+            "$ref": "#/components/schemas/QuestionRequest"
+          },
+          {
+            "$ref": "#/components/schemas/BillingConfirmationRequest"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind"
+        }
+      },
+      "AcceptOperationOnce": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "operation_approval"
+          },
+          "decision": {
+            "type": "string",
+            "const": "accept_once"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "operation_hash",
+          "decision_id",
+          "kind",
+          "decision"
+        ],
+        "description": "只批准当前请求快照的一次操作；不创建会话级批准、自动审批规则或未来执行许可。"
+      },
+      "AcceptPermissionSubsetOnce": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "permissions_approval"
+          },
+          "decision": {
+            "type": "string",
+            "const": "accept_once"
+          },
+          "approved_permissions": {
+            "$ref": "#/components/schemas/PermissionObject"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "operation_hash",
+          "decision_id",
+          "kind",
+          "decision",
+          "approved_permissions"
+        ],
+        "description": "只允许当前权限请求的经验证子集；禁止隐含全权限、绕过沙箱或持久化授权。"
+      },
+      "DenyApproval": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "approval_denial"
+          },
+          "decision": {
+            "type": "string",
+            "const": "deny"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "expected_revision",
+          "operation_hash",
+          "decision_id",
+          "kind",
+          "decision"
+        ]
+      },
+      "AnswerQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "question_answer"
+          },
+          "answers": {
+            "$ref": "#/components/schemas/Answers"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "operation_hash",
+          "decision_id",
+          "kind",
+          "answers"
+        ],
+        "description": "向 question 请求提交答案；不携带任何工具或权限授权。"
+      },
+      "CancelTaskFromRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "task_cancellation"
+          },
+          "decision": {
+            "type": "string",
+            "const": "cancel_task"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "expected_revision",
+          "operation_hash",
+          "decision_id",
+          "kind",
+          "decision"
+        ]
+      },
+      "DecisionRequest": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AcceptOperationOnce"
+          },
+          {
+            "$ref": "#/components/schemas/AcceptPermissionSubsetOnce"
+          },
+          {
+            "$ref": "#/components/schemas/DenyApproval"
+          },
+          {
+            "$ref": "#/components/schemas/AnswerQuestion"
+          },
+          {
+            "$ref": "#/components/schemas/CancelTaskFromRequest"
+          },
+          {
+            "$ref": "#/components/schemas/AcceptBillingOnce"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "operation_approval": "#/components/schemas/AcceptOperationOnce",
+            "permissions_approval": "#/components/schemas/AcceptPermissionSubsetOnce",
+            "approval_denial": "#/components/schemas/DenyApproval",
+            "question_answer": "#/components/schemas/AnswerQuestion",
+            "task_cancellation": "#/components/schemas/CancelTaskFromRequest",
+            "billing_confirmation": "#/components/schemas/AcceptBillingOnce"
+          }
+        }
+      },
+      "DecisionReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "request_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "decision_kind": {
+            "type": "string",
+            "enum": [
+              "operation_approval",
+              "permissions_approval",
+              "approval_denial",
+              "question_answer",
+              "task_cancellation",
+              "billing_confirmation"
+            ]
+          },
+          "delivery_status": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "recorded_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "sent_at": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "not_sent",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "request_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decision_recorded",
+              "provider_resolved",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "task_state": {
+            "$ref": "#/components/schemas/TaskStatus"
+          }
+        },
+        "required": [
+          "decision_id",
+          "task_id",
+          "attempt_id",
+          "request_revision",
+          "decision_kind",
+          "delivery_status",
+          "recorded_at",
+          "sent_at",
+          "pending_request_id",
+          "delivery_state",
+          "request_state",
+          "task_state"
+        ],
+        "description": "recorded=持久化完成；sent=适配器报告已把响应写入匹配的活跃运行时请求；delivery_unknown=无法证明是否送达。三者均不等于操作执行成功。 delivery_state与请求记录统一：recorded对应not_sent，sent对应sent，delivery_unknown对应delivery_unknown；request_state仍可为decision_recorded，直到运行时确认provider_resolved。",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "delivery_status": {
+                  "const": "recorded"
+                }
+              },
+              "required": [
+                "delivery_status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "delivery_state": {
+                  "const": "not_sent"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "delivery_status": {
+                  "const": "sent"
+                }
+              },
+              "required": [
+                "delivery_status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "delivery_state": {
+                  "const": "sent"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "delivery_status": {
+                  "const": "delivery_unknown"
+                }
+              },
+              "required": [
+                "delivery_status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "delivery_state": {
+                  "const": "delivery_unknown"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CancelTaskCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2000
+          },
+          "expected_version": {
+            "$ref": "#/components/schemas/DomainVersion"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_version"
+        ]
+      },
+      "CancellationReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "acceptance": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "already_terminal"
+            ]
+          },
+          "requested_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "task_state": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_version": {
+            "$ref": "#/components/schemas/DomainVersion"
+          }
+        },
+        "required": [
+          "command_id",
+          "task_id",
+          "acceptance",
+          "requested_at",
+          "task_state",
+          "task_version"
+        ],
+        "description": "requested 仅表示持久化取消意图；最终任务状态取决于运行时终止结果。"
+      },
+      "ArtifactMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "diff",
+              "patch",
+              "log",
+              "report",
+              "result",
+              "verification",
+              "file"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "media_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "size_bytes": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/DomainSha256"
+          },
+          "task_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/DomainId"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "title",
+          "media_type",
+          "created_at",
+          "size_bytes",
+          "sha256",
+          "task_id",
+          "project_id",
+          "attempt_id"
+        ],
+        "description": "公共artifact字段加服务端拥有关系；此读取端点要求大小与摘要已知，不暴露磁盘路径或token。"
+      },
+      "ArtifactSlice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactMetadata"
+          },
+          "offset_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "returned_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 262144
+          },
+          "content_encoding": {
+            "type": "string",
+            "const": "base64"
+          },
+          "data_base64": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "maxLength": 349528,
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          },
+          "next_offset_bytes": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "eof": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "artifact",
+          "offset_bytes",
+          "returned_bytes",
+          "content_encoding",
+          "data_base64",
+          "next_offset_bytes",
+          "eof"
+        ],
+        "description": "按字节分块读取不可变artifact，避免UTF-8切片破坏文本；完整文件SHA256见artifact。偏移越界返回416。"
+      },
+      "EventEnvelope": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Personal Agent Orchestrator Common Event",
+        "description": "Design-only durable control events. Raw provider/runtime events are retained separately and are not inserted into this schema.",
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "const": "1"
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/DomainEventCursor"
+          },
+          "occurred_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "task.created",
+              "task.state_changed",
+              "task.updated",
+              "attempt.started",
+              "attempt.finished",
+              "interaction.opened",
+              "interaction.closed",
+              "message.status_changed",
+              "artifact.created",
+              "task.result_available",
+              "task.recovery_required"
+            ]
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "task_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "task_version": {
+            "$ref": "#/components/schemas/DomainVersion"
+          },
+          "data": {
+            "type": "object"
+          },
+          "event_id": {
+            "$ref": "#/components/schemas/DomainId"
+          }
+        },
+        "required": [
+          "schema_version",
+          "event_id",
+          "cursor",
+          "occurred_at",
+          "event_type",
+          "project_id",
+          "task_id",
+          "task_version",
+          "data"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "event_type": {
+                "const": "task.created"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventTaskCreated"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "task.state_changed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventTaskStateChanged"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "task.updated"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventTaskUpdated"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "attempt.started"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventAttemptStarted"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "attempt.finished"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventAttemptFinished"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "interaction.opened"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainPendingRequest"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "interaction.closed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventInteractionClosed"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "message.status_changed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainMessageReceipt"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "artifact.created"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainArtifact"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "task.result_available"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventResultAvailable"
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_type": {
+                "const": "task.recovery_required"
+              },
+              "data": {
+                "$ref": "#/components/schemas/DomainEventRecoveryRequired"
+              }
+            }
+          }
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "description": "仅表示HTTP进程可响应；不披露任务、模型、凭据、路径或准备状态。"
+      },
+      "Readiness": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "recovering",
+              "ready",
+              "degraded"
+            ]
+          },
+          "checked_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "ready",
+          "phase",
+          "checked_at"
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_REQUEST",
+              "UNAUTHENTICATED",
+              "FORBIDDEN",
+              "INVALID_ORIGIN",
+              "INVALID_CSRF",
+              "NOT_FOUND",
+              "REVISION_MISMATCH",
+              "OPERATION_CHANGED",
+              "STALE_ATTEMPT",
+              "REQUEST_EXPIRED",
+              "REQUEST_RESOLVED",
+              "IDEMPOTENCY_CONFLICT",
+              "INVALID_DECISION_KIND",
+              "INVALID_PERMISSION_SUBSET",
+              "INVALID_ANSWERS",
+              "EVENT_CURSOR_EXPIRED",
+              "LIST_CURSOR_EXPIRED",
+              "FUTURE_CURSOR",
+              "ARTIFACT_UNAVAILABLE",
+              "RANGE_NOT_SATISFIABLE",
+              "RATE_LIMITED",
+              "NOT_READY",
+              "INTERNAL_ERROR",
+              "REVIEW_NOT_ALLOWED"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4000
+          },
+          "correlation_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "current_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "oldest_available_seq": {
+            "$ref": "#/components/schemas/SequenceCursor"
+          },
+          "latest_seq": {
+            "$ref": "#/components/schemas/SequenceCursor"
+          },
+          "current_version": {
+            "$ref": "#/components/schemas/DomainVersion"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "detail",
+          "correlation_id",
+          "retryable"
+        ],
+        "description": "错误内容不得泄露未授权资源是否存在或包含凭据、进程环境、原始内部错误堆栈。"
+      },
+      "DomainActualUsage": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "reported",
+              "incomplete"
+            ]
+          },
+          "source": {
+            "const": "runtime"
+          },
+          "as_of": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "attempt",
+              "task"
+            ]
+          },
+          "input_tokens": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "output_tokens": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "cached_input_tokens": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "reasoning_tokens": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "total_tokens": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "reported_cost": {
+            "$ref": "#/components/schemas/DomainReportedCost"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "as_of",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "DomainAdapter": {
+        "type": "string",
+        "enum": [
+          "codex_app_server",
+          "claude_agent_sdk",
+          "agy_acp",
+          "gemini_api"
+        ]
+      },
+      "DomainArtifact": {
+        "type": "object",
+        "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "diff",
+              "patch",
+              "log",
+              "report",
+              "result",
+              "verification",
+              "file"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "media_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "size_bytes": {
+            "$ref": "#/components/schemas/DomainCounter"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/DomainSha256"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "title",
+          "media_type",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "DomainAvailability": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "unavailable",
+              "requires_login",
+              "model_unavailable",
+              "disabled"
+            ]
+          },
+          "checked_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "status",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "DomainBilling": {
+        "type": "object",
+        "properties": {
+          "authentication": {
+            "type": "string",
+            "enum": [
+              "native_cli_login",
+              "api_key",
+              "cloud_identity",
+              "unknown"
+            ]
+          },
+          "billing_channel": {
+            "type": "string",
+            "enum": [
+              "provider_plan",
+              "api_metered",
+              "cloud_account",
+              "unknown"
+            ]
+          },
+          "extra_charges": {
+            "type": "string",
+            "enum": [
+              "possible",
+              "not_reported"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "runtime_reported",
+              "operator_configured",
+              "unknown"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "authentication",
+          "billing_channel",
+          "extra_charges",
+          "source",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "DomainCounter": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "DomainEventAttemptFinished": {
+        "type": "object",
+        "properties": {
+          "attempt_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "attempt_id",
+          "outcome",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventAttemptStarted": {
+        "type": "object",
+        "properties": {
+          "attempt_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/DomainRuntime"
+          },
+          "base_commit": {
+            "$ref": "#/components/schemas/DomainSha"
+          },
+          "profile_revision": {
+            "$ref": "#/components/schemas/DomainSha256"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "runtime",
+          "base_commit",
+          "profile_revision"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventCursor": {
+        "type": "string",
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "maxLength": 20,
+        "description": "Decimal integer string; never coerce through JavaScript Number."
+      },
+      "DomainEventInteractionClosed": {
+        "type": "object",
+        "properties": {
+          "pending_request_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "provider_resolved",
+              "cancelled",
+              "expired",
+              "invalidated"
+            ]
+          },
+          "decision_source": {
+            "type": "string",
+            "enum": [
+              "human_ui",
+              "trusted_host_elicitation",
+              "preauthorized_policy",
+              "runtime",
+              "none"
+            ]
+          },
+          "resolved_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          }
+        },
+        "required": [
+          "pending_request_id",
+          "attempt_id",
+          "reason",
+          "decision_source",
+          "resolved_at"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventRecoveryRequired": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DomainTaskSnapshot"
+              },
+              {
+                "properties": {
+                  "state": {
+                    "const": "recovering"
+                  }
+                }
+              }
+            ]
+          },
+          "recovery": {
+            "$ref": "#/components/schemas/DomainRecovery"
+          }
+        },
+        "required": [
+          "snapshot",
+          "recovery"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventResultAvailable": {
+        "type": "object",
+        "properties": {
+          "result_artifact_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "result_artifact_id",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventTaskCreated": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/DomainTaskSnapshot"
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventTaskStateChanged": {
+        "type": "object",
+        "properties": {
+          "from_state": {
+            "$ref": "#/components/schemas/DomainState"
+          },
+          "to_state": {
+            "$ref": "#/components/schemas/DomainState"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/DomainTaskSnapshot"
+          },
+          "reason_code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "from_state",
+          "to_state",
+          "snapshot"
+        ],
+        "additionalProperties": false
+      },
+      "DomainEventTaskUpdated": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/DomainTaskSnapshot"
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "pending_requests",
+                "artifacts",
+                "runtime",
+                "actual_usage",
+                "recovery",
+                "latest_attempt_id",
+                "review_state"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "snapshot",
+          "changed_fields"
+        ],
+        "additionalProperties": false
+      },
+      "DomainId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "DomainMessageReceipt": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/DomainRequestId"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "delivered",
+              "rejected"
+            ]
+          },
+          "received_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "effective_mode": {
+            "type": "string",
+            "enum": [
+              "active_turn",
+              "after_current_tools",
+              "next_turn"
+            ]
+          },
+          "delivered_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "message_id",
+          "request_id",
+          "status",
+          "received_at"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "queued",
+                    "delivered"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "effective_mode"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "delivered"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "delivered_at"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "rejected"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "reason"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "effective_mode"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "delivered_at"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "DomainModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "catalog_source": {
+            "type": "string",
+            "enum": [
+              "runtime_reported",
+              "official_api",
+              "operator_configured"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "catalog_source"
+        ],
+        "additionalProperties": false
+      },
+      "DomainPendingRequest": {
+        "type": "object",
+        "properties": {
+          "pending_request_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "command_approval",
+              "file_approval",
+              "permission_grant",
+              "user_question",
+              "billing_confirmation"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "console_path": {
+            "type": "string",
+            "pattern": "^/console/requests/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "maxLength": 146
+          }
+        },
+        "required": [
+          "pending_request_id",
+          "attempt_id",
+          "kind",
+          "summary",
+          "created_at",
+          "expires_at",
+          "console_path"
+        ],
+        "additionalProperties": false
+      },
+      "DomainProfile": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/DomainSha256"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "description": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2000
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "coordinator",
+                "worker",
+                "reviewer"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true
+          },
+          "provider": {
+            "$ref": "#/components/schemas/DomainProvider"
+          },
+          "adapter": {
+            "$ref": "#/components/schemas/DomainAdapter"
+          },
+          "model": {
+            "$ref": "#/components/schemas/DomainModel"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/DomainAvailability"
+          },
+          "billing": {
+            "$ref": "#/components/schemas/DomainBilling"
+          },
+          "permission_policy_id": {
+            "$ref": "#/components/schemas/DomainId"
+          }
+        },
+        "required": [
+          "profile_id",
+          "revision",
+          "display_name",
+          "description",
+          "roles",
+          "provider",
+          "adapter",
+          "model",
+          "availability",
+          "billing",
+          "permission_policy_id"
+        ],
+        "additionalProperties": false
+      },
+      "DomainProvider": {
+        "type": "string",
+        "enum": [
+          "openai",
+          "anthropic",
+          "google"
+        ]
+      },
+      "DomainRecovery": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "runtime_disconnected",
+              "daemon_restarted",
+              "dispatch_unknown",
+              "cancellation_unconfirmed",
+              "approval_delivery_unknown",
+              "manual_reconciliation"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "requires_human": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason",
+          "summary",
+          "requires_human"
+        ],
+        "additionalProperties": false
+      },
+      "DomainReportedCost": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,12})?$",
+            "maxLength": 64
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "DomainRequestId": {
+        "$ref": "#/components/schemas/DomainId",
+        "description": "Opaque client request identifier; authenticated context supplies authorization."
+      },
+      "DomainRuntime": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "$ref": "#/components/schemas/DomainProvider"
+          },
+          "adapter": {
+            "$ref": "#/components/schemas/DomainAdapter"
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "model_display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "runtime_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "adapter_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "provider",
+          "adapter",
+          "model_id"
+        ],
+        "additionalProperties": false
+      },
+      "DomainSha": {
+        "type": "string",
+        "pattern": "^(?:[A-Fa-f0-9]{40}|[A-Fa-f0-9]{64})$"
+      },
+      "DomainSha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "DomainState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "starting",
+          "running",
+          "waiting_input",
+          "cancelling",
+          "recovering",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "interrupted"
+        ]
+      },
+      "DomainTaskSnapshot": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "profile_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DomainState"
+          },
+          "version": {
+            "$ref": "#/components/schemas/DomainVersion"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "started_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "completed_at": {
+            "$ref": "#/components/schemas/DomainTimestamp"
+          },
+          "latest_attempt_id": {
+            "$ref": "#/components/schemas/DomainId"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2000
+          },
+          "pending_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainPendingRequest"
+            },
+            "minItems": 0,
+            "maxItems": 8
+          },
+          "pending_requests_truncated": {
+            "type": "boolean"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainArtifact"
+            },
+            "minItems": 0,
+            "maxItems": 16
+          },
+          "artifacts_truncated": {
+            "type": "boolean"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/DomainRuntime"
+          },
+          "actual_usage": {
+            "$ref": "#/components/schemas/DomainActualUsage"
+          },
+          "recovery": {
+            "$ref": "#/components/schemas/DomainRecovery"
+          },
+          "review_state": {
+            "type": "string",
+            "enum": [
+              "unreviewed",
+              "accepted",
+              "rejected"
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "profile_id",
+          "state",
+          "review_state",
+          "version",
+          "created_at",
+          "updated_at",
+          "summary",
+          "pending_requests",
+          "pending_requests_truncated",
+          "artifacts",
+          "artifacts_truncated"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "enum": [
+                    "succeeded",
+                    "failed",
+                    "cancelled",
+                    "interrupted"
+                  ]
+                }
+              },
+              "required": [
+                "state"
+              ]
+            },
+            "then": {
+              "required": [
+                "completed_at"
+              ],
+              "properties": {
+                "pending_requests": {
+                  "maxItems": 0
+                },
+                "pending_requests_truncated": {
+                  "const": false
+                }
+              }
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "completed_at"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "waiting_input"
+                }
+              },
+              "required": [
+                "state"
+              ]
+            },
+            "then": {
+              "properties": {
+                "pending_requests": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "recovering"
+                }
+              },
+              "required": [
+                "state"
+              ]
+            },
+            "then": {
+              "required": [
+                "recovery"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "queued"
+                }
+              },
+              "required": [
+                "state"
+              ]
+            },
+            "then": {
+              "properties": {
+                "review_state": {
+                  "const": "unreviewed"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DomainTimestamp": {
+        "type": "string",
+        "format": "date-time",
+        "maxLength": 40,
+        "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+      },
+      "DomainVersion": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "CommandApprovalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decision_recorded",
+              "provider_resolved",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeKind"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "provider_request_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GET时按当前状态构造的决定投递投影；不是修改已保存的幂等HTTP原始收据。"
+          },
+          "pending_request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "not_sent",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "const": "command_approval"
+          },
+          "operation_preview": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32000
+          },
+          "artifact_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpaqueId"
+            },
+            "minItems": 0,
+            "maxItems": 64,
+            "uniqueItems": true
+          },
+          "allowed_choices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "accept_once",
+                "deny",
+                "cancel_task"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "attempt_id",
+          "revision",
+          "operation_hash",
+          "state",
+          "created_at",
+          "expires_at",
+          "runtime",
+          "summary",
+          "provider_request_id",
+          "decision",
+          "pending_request_id",
+          "delivery_state",
+          "kind",
+          "operation_preview",
+          "artifact_ids",
+          "allowed_choices"
+        ]
+      },
+      "FileApprovalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decision_recorded",
+              "provider_resolved",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeKind"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "provider_request_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GET时按当前状态构造的决定投递投影；不是修改已保存的幂等HTTP原始收据。"
+          },
+          "pending_request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "not_sent",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "const": "file_approval"
+          },
+          "operation_preview": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32000
+          },
+          "artifact_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpaqueId"
+            },
+            "minItems": 0,
+            "maxItems": 64,
+            "uniqueItems": true
+          },
+          "allowed_choices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "accept_once",
+                "deny",
+                "cancel_task"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "attempt_id",
+          "revision",
+          "operation_hash",
+          "state",
+          "created_at",
+          "expires_at",
+          "runtime",
+          "summary",
+          "provider_request_id",
+          "decision",
+          "pending_request_id",
+          "delivery_state",
+          "kind",
+          "operation_preview",
+          "artifact_ids",
+          "allowed_choices"
+        ]
+      },
+      "BillingConfirmationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "attempt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decision_recorded",
+              "provider_resolved",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeKind"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "provider_request_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GET时按当前状态构造的决定投递投影；不是修改已保存的幂等HTTP原始收据。"
+          },
+          "pending_request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "not_sent",
+              "sent",
+              "delivery_unknown"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "const": "billing_confirmation"
+          },
+          "profile_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "billing_description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "proposed_action": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "allowed_choices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "accept_once",
+                "deny",
+                "cancel_task"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "attempt_id",
+          "revision",
+          "operation_hash",
+          "state",
+          "created_at",
+          "expires_at",
+          "runtime",
+          "summary",
+          "provider_request_id",
+          "decision",
+          "pending_request_id",
+          "delivery_state",
+          "kind",
+          "profile_id",
+          "billing_description",
+          "proposed_action",
+          "allowed_choices"
+        ],
+        "description": "Reserved for a future revision; macOS MVP does not emit or resolve billing_confirmation. Billing channel consent belongs to local profile configuration.",
+        "x-implementation-stage": "reserved-not-emitted-in-macos-mvp"
+      },
+      "AcceptBillingOnce": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "operation_hash": {
+            "$ref": "#/components/schemas/OperationHash"
+          },
+          "decision_id": {
+            "$ref": "#/components/schemas/IdempotencyId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "billing_confirmation"
+          },
+          "decision": {
+            "type": "string",
+            "const": "accept_once"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "operation_hash",
+          "decision_id",
+          "kind",
+          "decision"
+        ],
+        "description": "Reserved for a future revision; macOS MVP does not emit or resolve billing_confirmation. Billing channel consent belongs to local profile configuration.",
+        "x-implementation-stage": "reserved-not-emitted-in-macos-mvp"
+      },
+      "TaskReviewCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/DomainRequestId"
+          },
+          "expected_version": {
+            "$ref": "#/components/schemas/DomainVersion"
+          },
+          "review_state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_version",
+          "review_state"
+        ],
+        "description": "仅人工标记已终态任务的审查结果；不执行合并、push、清理worktree或任何新的模型任务。"
+      },
+      "TaskReviewReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/DomainRequestId"
+          },
+          "status": {
+            "type": "string",
+            "const": "recorded"
+          },
+          "task": {
+            "$ref": "#/components/schemas/DomainTaskSnapshot"
+          },
+          "recorded_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "request_id",
+          "status",
+          "task",
+          "recorded_at"
+        ]
+      }
+    }
+  },
+  "x-design-status": "design-only; runtime interop and human bootstrap require implementation verification",
+  "x-domain-contracts": {
+    "mcp-tools": {
+      "path": "mcp-tools.json",
+      "sha256": "e20494fafb547f386a3137c6401f83594951cff80af2dd48342b949c1756152f"
+    },
+    "events": {
+      "path": "events.schema.json",
+      "sha256": "c36d5d3c65833c5dc8dd65bff1458b500629819060eda0cc033c239f63e8c9ad"
+    },
+    "task-source": "tools[name=get_task].outputSchema.$defs.taskSnapshot",
+    "profile-source": "tools[name=list_profiles].outputSchema.$defs.profile",
+    "event-source": "events.schema.json (same shape, local $refs rewritten only)"
+  },
+  "x-authorization-rules": [
+    "Validate Host and any present Origin on every HTTP request; reject invalid and null Origin.",
+    "Mutating console routes require exact Origin, ConsoleSession and CsrfToken; no bearer alternative.",
+    "Enforce owner/project/resource authorization after authentication; path identifiers are not capabilities.",
+    "When both cookie and bearer are present, reject conflicting principals; never promote bearer to human authority.",
+    "No endpoint in this contract registers runtime profiles, edits credentials, broadens sandbox policy or approves through MCP."
+  ],
+  "x-implementation-profile": "../implementation-profile.json"
+}

@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.private.json
+.DS_Store

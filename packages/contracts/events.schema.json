@@ -1,0 +1,987 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Personal Agent Orchestrator Common Event",
+  "description": "Design-only durable control events. Raw provider/runtime events are retained separately and are not inserted into this schema.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "cursor": {
+      "$ref": "#/$defs/eventCursor"
+    },
+    "occurred_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "task.created",
+        "task.state_changed",
+        "task.updated",
+        "attempt.started",
+        "attempt.finished",
+        "interaction.opened",
+        "interaction.closed",
+        "message.status_changed",
+        "artifact.created",
+        "task.result_available",
+        "task.recovery_required"
+      ]
+    },
+    "project_id": {
+      "$ref": "#/$defs/id"
+    },
+    "task_id": {
+      "$ref": "#/$defs/id"
+    },
+    "task_version": {
+      "$ref": "#/$defs/version"
+    },
+    "data": {
+      "type": "object"
+    },
+    "event_id": {
+      "$ref": "#/$defs/id"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "cursor",
+    "occurred_at",
+    "event_type",
+    "project_id",
+    "task_id",
+    "task_version",
+    "data"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "event_type": {
+          "const": "task.created"
+        },
+        "data": {
+          "$ref": "#/$defs/eventTaskCreated"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "task.state_changed"
+        },
+        "data": {
+          "$ref": "#/$defs/eventTaskStateChanged"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "task.updated"
+        },
+        "data": {
+          "$ref": "#/$defs/eventTaskUpdated"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "attempt.started"
+        },
+        "data": {
+          "$ref": "#/$defs/eventAttemptStarted"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "attempt.finished"
+        },
+        "data": {
+          "$ref": "#/$defs/eventAttemptFinished"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "interaction.opened"
+        },
+        "data": {
+          "$ref": "#/$defs/pendingRequest"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "interaction.closed"
+        },
+        "data": {
+          "$ref": "#/$defs/eventInteractionClosed"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "message.status_changed"
+        },
+        "data": {
+          "$ref": "#/$defs/messageReceipt"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "artifact.created"
+        },
+        "data": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "task.result_available"
+        },
+        "data": {
+          "$ref": "#/$defs/eventResultAvailable"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "const": "task.recovery_required"
+        },
+        "data": {
+          "$ref": "#/$defs/eventRecoveryRequired"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "eventCursor": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "maxLength": 20,
+      "description": "Decimal integer string; never coerce through JavaScript Number."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40,
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "eventTaskCreated": {
+      "type": "object",
+      "properties": {
+        "snapshot": {
+          "$ref": "#/$defs/taskSnapshot"
+        }
+      },
+      "required": [
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "taskSnapshot": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/id"
+        },
+        "project_id": {
+          "$ref": "#/$defs/id"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "latest_attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "pending_requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pendingRequest"
+          },
+          "minItems": 0,
+          "maxItems": 8
+        },
+        "pending_requests_truncated": {
+          "type": "boolean"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          },
+          "minItems": 0,
+          "maxItems": 16
+        },
+        "artifacts_truncated": {
+          "type": "boolean"
+        },
+        "runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "actual_usage": {
+          "$ref": "#/$defs/actualUsage"
+        },
+        "recovery": {
+          "$ref": "#/$defs/recovery"
+        },
+        "review_state": {
+          "type": "string",
+          "enum": [
+            "unreviewed",
+            "accepted",
+            "rejected"
+          ]
+        }
+      },
+      "required": [
+        "task_id",
+        "project_id",
+        "profile_id",
+        "state",
+        "review_state",
+        "version",
+        "created_at",
+        "updated_at",
+        "summary",
+        "pending_requests",
+        "pending_requests_truncated",
+        "artifacts",
+        "artifacts_truncated"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "succeeded",
+                  "failed",
+                  "cancelled",
+                  "interrupted"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "completed_at"
+            ],
+            "properties": {
+              "pending_requests": {
+                "maxItems": 0
+              },
+              "pending_requests_truncated": {
+                "const": false
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "completed_at"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "waiting_input"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pending_requests": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "recovering"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "recovery"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "queued"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "review_state": {
+                "const": "unreviewed"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "starting",
+        "running",
+        "waiting_input",
+        "cancelling",
+        "recovering",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "interrupted"
+      ]
+    },
+    "pendingRequest": {
+      "type": "object",
+      "properties": {
+        "pending_request_id": {
+          "$ref": "#/$defs/id"
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "command_approval",
+            "file_approval",
+            "permission_grant",
+            "user_question",
+            "billing_confirmation"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "console_path": {
+          "type": "string",
+          "pattern": "^/console/requests/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "maxLength": 146
+        }
+      },
+      "required": [
+        "pending_request_id",
+        "attempt_id",
+        "kind",
+        "summary",
+        "created_at",
+        "expires_at",
+        "console_path"
+      ],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "diff",
+            "patch",
+            "log",
+            "report",
+            "result",
+            "verification",
+            "file"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/counter"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "kind",
+        "title",
+        "media_type",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "counter": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "adapter": {
+          "$ref": "#/$defs/adapter"
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "model_display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "runtime_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "adapter_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "provider",
+        "adapter",
+        "model_id"
+      ],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "openai",
+        "anthropic",
+        "google"
+      ]
+    },
+    "adapter": {
+      "type": "string",
+      "enum": [
+        "codex_app_server",
+        "claude_agent_sdk",
+        "agy_acp",
+        "gemini_api"
+      ]
+    },
+    "actualUsage": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "incomplete"
+          ]
+        },
+        "source": {
+          "const": "runtime"
+        },
+        "as_of": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "attempt",
+            "task"
+          ]
+        },
+        "input_tokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "output_tokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "cached_input_tokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "reasoning_tokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "total_tokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "reported_cost": {
+          "$ref": "#/$defs/reportedCost"
+        }
+      },
+      "required": [
+        "status",
+        "source",
+        "as_of",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "reportedCost": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,12})?$",
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "recovery": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "runtime_disconnected",
+            "daemon_restarted",
+            "dispatch_unknown",
+            "cancellation_unconfirmed",
+            "approval_delivery_unknown",
+            "manual_reconciliation"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "requires_human": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reason",
+        "summary",
+        "requires_human"
+      ],
+      "additionalProperties": false
+    },
+    "eventTaskStateChanged": {
+      "type": "object",
+      "properties": {
+        "from_state": {
+          "$ref": "#/$defs/state"
+        },
+        "to_state": {
+          "$ref": "#/$defs/state"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/taskSnapshot"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "from_state",
+        "to_state",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "eventTaskUpdated": {
+      "type": "object",
+      "properties": {
+        "snapshot": {
+          "$ref": "#/$defs/taskSnapshot"
+        },
+        "changed_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "pending_requests",
+              "artifacts",
+              "runtime",
+              "actual_usage",
+              "recovery",
+              "latest_attempt_id",
+              "review_state"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "snapshot",
+        "changed_fields"
+      ],
+      "additionalProperties": false
+    },
+    "eventAttemptStarted": {
+      "type": "object",
+      "properties": {
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "base_commit": {
+          "$ref": "#/$defs/sha"
+        },
+        "profile_revision": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "runtime",
+        "base_commit",
+        "profile_revision"
+      ],
+      "additionalProperties": false
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^(?:[A-Fa-f0-9]{40}|[A-Fa-f0-9]{64})$"
+    },
+    "eventAttemptFinished": {
+      "type": "object",
+      "properties": {
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "unknown"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "attempt_id",
+        "outcome",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "eventInteractionClosed": {
+      "type": "object",
+      "properties": {
+        "pending_request_id": {
+          "$ref": "#/$defs/id"
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "provider_resolved",
+            "cancelled",
+            "expired",
+            "invalidated"
+          ]
+        },
+        "decision_source": {
+          "type": "string",
+          "enum": [
+            "human_ui",
+            "trusted_host_elicitation",
+            "preauthorized_policy",
+            "runtime",
+            "none"
+          ]
+        },
+        "resolved_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "pending_request_id",
+        "attempt_id",
+        "reason",
+        "decision_source",
+        "resolved_at"
+      ],
+      "additionalProperties": false
+    },
+    "messageReceipt": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "$ref": "#/$defs/id"
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "delivered",
+            "rejected"
+          ]
+        },
+        "received_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "effective_mode": {
+          "type": "string",
+          "enum": [
+            "active_turn",
+            "after_current_tools",
+            "next_turn"
+          ]
+        },
+        "delivered_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "message_id",
+        "request_id",
+        "status",
+        "received_at"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "queued",
+                  "delivered"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "effective_mode"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "delivered"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "delivered_at"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "effective_mode"
+                  ]
+                },
+                {
+                  "required": [
+                    "delivered_at"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "requestId": {
+      "$ref": "#/$defs/id",
+      "description": "Opaque client request identifier; authenticated context supplies authorization."
+    },
+    "eventResultAvailable": {
+      "type": "object",
+      "properties": {
+        "result_artifact_id": {
+          "$ref": "#/$defs/id"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "result_artifact_id",
+        "truncated"
+      ],
+      "additionalProperties": false
+    },
+    "eventRecoveryRequired": {
+      "type": "object",
+      "properties": {
+        "snapshot": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/taskSnapshot"
+            },
+            {
+              "properties": {
+                "state": {
+                  "const": "recovering"
+                }
+              }
+            }
+          ]
+        },
+        "recovery": {
+          "$ref": "#/$defs/recovery"
+        }
+      },
+      "required": [
+        "snapshot",
+        "recovery"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
+

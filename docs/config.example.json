@@ -1,0 +1,138 @@
+{
+  "port": 43127,
+  "codex": "/opt/homebrew/bin/codex",
+  "codex_home": "/Users/you/.zgent-codex",
+  "agy": {
+    "executable": "/opt/homebrew/bin/agy",
+    "home": "/Users/you/.zgent-agy"
+  },
+  "claude_sdk": {
+    "home": "/Users/you/.zgent-claude",
+    "authentication": "api_key"
+  },
+  "projects": [
+    {
+      "id": "my-project",
+      "label": "我的项目",
+      "root": "/Users/you/code/my-project",
+      "base_ref": "refs/heads/main"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "sol",
+      "label": "GPT-6.2 Sol 实现",
+      "runtime": "codex_app_server",
+      "model": "gpt-6.2-sol",
+      "mode": "workspace_write",
+      "effort": "medium",
+      "billing": "provider_plan",
+      "network_domains": []
+    },
+    {
+      "id": "astra",
+      "label": "GPT-6.2 Astra 实现",
+      "runtime": "codex_app_server",
+      "model": "gpt-6.2-astra",
+      "mode": "workspace_write",
+      "effort": "high",
+      "billing": "provider_plan",
+      "network_domains": []
+    },
+    {
+      "id": "review",
+      "label": "GPT-6.2 Astra 审查",
+      "runtime": "codex_app_server",
+      "model": "gpt-6.2-astra",
+      "mode": "read_only",
+      "billing": "provider_plan",
+      "network_domains": []
+    },
+    {
+      "id": "claude-review",
+      "label": "Claude Opus 审查",
+      "runtime": "claude_agent_sdk",
+      "model": "opus",
+      "mode": "read_only",
+      "billing": "api_metered",
+      "network_domains": []
+    }
+  ],
+  "main_profiles": [
+    {
+      "id": "agy-main",
+      "label": "Antigravity 主控",
+      "runtime": "antigravity_acp",
+      "billing": "provider_plan",
+      "projects": [
+        "my-project"
+      ],
+      "worker_profiles": [
+        "sol",
+        "astra",
+        "review",
+        "claude-review"
+      ]
+    },
+    {
+      "id": "opus-main",
+      "label": "Claude Opus 主控",
+      "runtime": "claude_agent_sdk",
+      "model": "opus",
+      "billing": "api_metered",
+      "projects": [
+        "my-project"
+      ],
+      "worker_profiles": [
+        "sol",
+        "astra",
+        "review",
+        "claude-review"
+      ]
+    },
+    {
+      "id": "fable-main",
+      "label": "Claude Fable 主控",
+      "runtime": "claude_agent_sdk",
+      "model": "fable",
+      "billing": "api_metered",
+      "projects": [
+        "my-project"
+      ],
+      "worker_profiles": [
+        "sol",
+        "astra",
+        "review",
+        "claude-review"
+      ]
+    }
+  ],
+  "clients": {
+    "agy": {
+      "projects": [
+        "my-project"
+      ],
+      "profiles": [
+        "sol",
+        "astra",
+        "review",
+        "claude-review"
+      ],
+      "read": "project",
+      "control": "own"
+    },
+    "claude-code": {
+      "projects": [
+        "my-project"
+      ],
+      "profiles": [
+        "sol",
+        "astra",
+        "review",
+        "claude-review"
+      ],
+      "read": "project",
+      "control": "own"
+    }
+  }
+}
