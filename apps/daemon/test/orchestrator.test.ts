@@ -438,6 +438,21 @@ test('MCP and Apps, snapshots, main sessions, event replay and safe restart over
       const response = await ownerRequest(ownerSocket(daemon), path, body);
       return { status: response.statusCode, body: await jsonResponse<any>(response) };
     };
+    const sameName = [];
+    for (const parent of ['work', 'play']) {
+      const path = join(root, parent, 'same-name');
+      mkdirSync(path, { recursive: true });
+      git(path, 'init', '-b', 'main');
+      git(path, 'commit', '--allow-empty', '-m', 'Initial fixture');
+      const opened = await owner('/api/v1/projects', { path });
+      assert.equal(opened.status, 200);
+      sameName.push(opened.body.id);
+      assert((await call(agy, 'list_profiles', { project_id: opened.body.id })).ok);
+      assert((await call(claude, 'list_profiles', { project_id: opened.body.id })).ok);
+    }
+    assert.notEqual(sameName[0], sameName[1]);
+    const recent = (await owner('/api/v1/projects')).body;
+    assert.deepEqual(recent.filter((item: { label: string }) => item.label === 'same-name').map((item: { id: string }) => item.id).sort(), sameName.sort());
     writeFileSync(join(repo, '.gitignore'), 'ignored.txt\n');
     writeFileSync(join(repo, 'fresh.txt'), 'included in snapshot\n');
     writeFileSync(join(repo, 'ignored.txt'), 'excluded by project ignore\n');
